@@ -63,6 +63,21 @@
   .empty{padding:20px;text-align:center;color:var(--muted)}
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 18px;border-radius:20px;opacity:0;transition:.3s;pointer-events:none;font-size:14px;z-index:9}
   .toast.on{opacity:.92}
+  @media(max-width:600px){
+    header{padding:10px 14px;gap:4px}
+    header h1{font-size:17px;flex-basis:100%;white-space:nowrap}
+    header small{font-size:12px}
+    .wrap{padding:10px}
+    .toolbar button,.toolbar select{padding:7px 9px;font-size:13px}
+  }
+  .ocr{display:none;background:var(--card);border:2px solid var(--accent);border-radius:12px;padding:14px;margin-bottom:14px}
+  .ocr.on{display:block}
+  .ocr-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:12px}
+  @media(max-width:700px){.ocr-grid{grid-template-columns:1fr}}
+  .ocr img{max-width:100%;max-height:320px;border-radius:8px;border:1px solid var(--line);display:block;margin:auto}
+  .ocr textarea{width:100%;min-height:200px;border:1px solid var(--line);border-radius:8px;font-size:16px}
+  .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:8px 0}
+  .bar div{height:100%;width:0;background:var(--accent);transition:width .2s}
   .hint{font-size:13px;color:var(--muted);margin:4px 2px 10px}
   @media print{
     header,.toolbar,.tabs,#learnBox,#listBox,.status,.hint,.panel-head button,.panel-head select{display:none!important}
@@ -81,6 +96,10 @@
 <div class="wrap">
   <div class="toolbar">
     <button id="btnMode" title="تبديل اتجاه الترجمة">⇄ عربي ← English</button>
+    <button id="btnCam">📷 التقاط صورة</button>
+    <button id="btnImg">🖼️ إرفاق صورة</button>
+    <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+    <input type="file" id="imgInput" accept="image/*" hidden>
     <button class="primary" id="btnTranslate">🔄 ترجم الآن</button>
     <label class="switch"><input type="checkbox" id="auto" checked> ترجمة تلقائية</label>
     <button id="btnNew">📄 جديد</button>
@@ -92,6 +111,24 @@
     <button id="btnPrint">🖨️ طباعة</button>
   </div>
   <div class="status" id="status"></div>
+
+  <div class="ocr" id="ocrBox">
+    <b>📄 استخراج النص من الصورة</b>
+    <div class="hint" id="ocrHint">للحصول على أفضل نتيجة: صورة واضحة، إضاءة جيدة، والنص مستقيم.</div>
+    <div class="ocr-grid">
+      <div><img id="ocrImg" alt="الصورة"></div>
+      <div>
+        <div id="ocrStatus" class="count">⏳ جاري التحضير...</div>
+        <div class="bar"><div id="ocrBar"></div></div>
+        <textarea id="ocrText" placeholder="سيظهر النص المستخرج هنا — يمكنك تصحيحه قبل الإدراج"></textarea>
+        <div class="toolbar" style="margin-top:8px">
+          <button class="primary" id="ocrAppend">➕ أضف إلى المقال</button>
+          <button id="ocrReplace">🔁 استبدل نص المقال</button>
+          <button class="danger" id="ocrCancel">✖ إلغاء</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="grid">
     <!-- النص الأصلي -->
@@ -414,6 +451,100 @@ document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
   if(b.dataset.tab==='listBox') renderList();
 });
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),1800); }
+
+/* ========== استخراج النص من الصور (OCR) ========== */
+let tessLoading = null, ocrWorker = null, ocrWorkerLang = '';
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(tessLoading) return tessLoading;
+  tessLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = res; s.onerror = () => { tessLoading = null; rej(new Error('load')); };
+    document.head.appendChild(s);
+  });
+  return tessLoading;
+}
+// تحسين الصورة: تدرّج رمادي + تكبير الصور الصغيرة + تصغير الكبيرة جداً
+function prepImage(file){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      const scale = Math.max(w,h) < 1200 ? 1200/Math.max(w,h) : (Math.max(w,h) > 3000 ? 3000/Math.max(w,h) : 1);
+      w = Math.round(w*scale); h = Math.round(h*scale);
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      const x = c.getContext('2d'); x.drawImage(img,0,0,w,h);
+      const d = x.getImageData(0,0,w,h), p = d.data;
+      for(let i=0;i<p.length;i+=4){ const g = 0.299*p[i]+0.587*p[i+1]+0.114*p[i+2]; p[i]=p[i+1]=p[i+2]=g; }
+      x.putImageData(d,0,0);
+      res(c);
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function runOCR(file){
+  if(!file) return;
+  const box = $('ocrBox'), st = $('ocrStatus'), bar = $('ocrBar');
+  box.classList.add('on'); box.scrollIntoView({behavior:'smooth', block:'start'});
+  $('ocrImg').src = URL.createObjectURL(file);
+  $('ocrText').value = ''; bar.style.width='0';
+  if(!navigator.onLine){ st.textContent = '📴 استخراج النص يحتاج اتصالاً بالإنترنت (أول مرة على الأقل).'; return; }
+  try{
+    st.textContent = '⏳ جاري تحميل أداة القراءة (أول مرة قد تأخذ دقيقة)...';
+    await loadTesseract();
+    const lang = mode === 'ar-en' ? 'ara+eng' : 'eng+ara';
+    if(!ocrWorker || ocrWorkerLang !== lang){
+      if(ocrWorker) await ocrWorker.terminate();
+      ocrWorker = await Tesseract.createWorker(lang.split('+'), 1, {
+        logger: m => {
+          if(m.status === 'recognizing text'){ st.textContent = '🔍 جاري قراءة النص... ' + Math.round(m.progress*100) + '%'; bar.style.width = (m.progress*100)+'%'; }
+          else if(m.status && m.status.includes('load')){ st.textContent = '⏳ جاري تحميل ملفات اللغة...'; }
+        }
+      });
+      ocrWorkerLang = lang;
+    }
+    const canvas = await prepImage(file);
+    const { data } = await ocrWorker.recognize(canvas);
+    const text = cleanOCR(data.text);
+    $('ocrText').value = text;
+    bar.style.width = '100%';
+    st.textContent = text ? '✅ تم استخراج النص — راجعه وصحّح أي خطأ ثم اضغط "أضف إلى المقال".' : '⚠️ لم يُعثر على نص واضح. جرّب صورة أوضح أو أقرب.';
+  }catch(e){
+    st.textContent = '⚠️ تعذّر استخراج النص — تأكد من الإنترنت وحاول مرة أخرى.';
+  }
+}
+function cleanOCR(t){
+  return (t||'')
+    .replace(/[ \t]+/g,' ')
+    .replace(/\n{3,}/g,'\n\n')
+    .split('\n').map(l=>l.trim()).join('\n')
+    // دمج الأسطر المقطوعة داخل الفقرة الواحدة
+    .replace(/([^\n.!؟?:])\n(?!\n)/g,'$1 ')
+    .replace(/\n\n/g,'\n')
+    .trim();
+}
+$('btnCam').onclick = () => $('camInput').click();
+$('btnImg').onclick = () => $('imgInput').click();
+$('camInput').onchange = e => { runOCR(e.target.files[0]); e.target.value=''; };
+$('imgInput').onchange = e => { runOCR(e.target.files[0]); e.target.value=''; };
+function closeOCR(){ $('ocrBox').classList.remove('on'); }
+$('ocrCancel').onclick = closeOCR;
+$('ocrAppend').onclick = () => {
+  const t = $('ocrText').value.trim(); if(!t){ toast('لا يوجد نص'); return; }
+  srcText.value = srcText.value.trim() ? srcText.value.replace(/\s+$/,'') + '\n' + t : t;
+  closeOCR(); translateAll(); toast('✅ تمت إضافة النص');
+};
+$('ocrReplace').onclick = () => {
+  const t = $('ocrText').value.trim(); if(!t){ toast('لا يوجد نص'); return; }
+  srcText.value = t; closeOCR(); translateAll(); toast('✅ تم استبدال النص');
+};
+// سحب وإفلات صورة على مربع الكتابة (للكمبيوتر)
+srcText.addEventListener('dragover', e => e.preventDefault());
+srcText.addEventListener('drop', e => { const f = [...(e.dataTransfer.files||[])].find(f=>f.type.startsWith('image/')); if(f){ e.preventDefault(); runOCR(f); } });
+// لصق صورة (Ctrl+V)
+document.addEventListener('paste', e => { const it = [...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ e.preventDefault(); runOCR(it.getAsFile()); } });
 
 /* ========== PWA: التثبيت والعمل بدون إنترنت ========== */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
