@@ -78,6 +78,10 @@
   .ocr textarea{width:100%;min-height:200px;border:1px solid var(--line);border-radius:8px;font-size:16px}
   .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:8px 0}
   .bar div{height:100%;width:0;background:var(--accent);transition:width .2s}
+  #btnMic.rec{background:var(--danger);color:#fff;border-color:var(--danger);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.6}}
+  .live{display:none;background:#fff4f2;border:1px dashed var(--danger);border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:15px;color:var(--danger)}
+  .live.on{display:block}
   .hint{font-size:13px;color:var(--muted);margin:4px 2px 10px}
   @media print{
     header,.toolbar,.tabs,#learnBox,#listBox,.status,.hint,.panel-head button,.panel-head select{display:none!important}
@@ -96,6 +100,7 @@
 <div class="wrap">
   <div class="toolbar">
     <button id="btnMode" title="تبديل اتجاه الترجمة">⇄ عربي ← English</button>
+    <button id="btnMic">🎙️ تسجيل صوتي</button>
     <button id="btnCam">📷 التقاط صورة</button>
     <button id="btnImg">🖼️ إرفاق صورة</button>
     <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
@@ -111,6 +116,7 @@
     <button id="btnPrint">🖨️ طباعة</button>
   </div>
   <div class="status" id="status"></div>
+  <div class="live" id="liveBox">🔴 <span id="liveText">أستمع إليك... تكلّم الآن</span></div>
 
   <div class="ocr" id="ocrBox">
     <b>📄 استخراج النص من الصورة</b>
@@ -545,6 +551,71 @@ srcText.addEventListener('dragover', e => e.preventDefault());
 srcText.addEventListener('drop', e => { const f = [...(e.dataTransfer.files||[])].find(f=>f.type.startsWith('image/')); if(f){ e.preventDefault(); runOCR(f); } });
 // لصق صورة (Ctrl+V)
 document.addEventListener('paste', e => { const it = [...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it){ e.preventDefault(); runOCR(it.getAsFile()); } });
+
+/* ========== التسجيل الصوتي (تحويل الكلام إلى نص) ========== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recOn = false;
+// أوامر الترقيم بالصوت
+function voiceCmds(t){
+  if(mode === 'ar-en'){
+    return t.replace(/\s*(سطر جديد|فقرة جديدة)\s*/g,'\n')
+            .replace(/\s*(نقطة)(?=\s|$)/g,'.')
+            .replace(/\s*(فاصلة)(?=\s|$)/g,'،')
+            .replace(/\s*(علامة استفهام)(?=\s|$)/g,'؟')
+            .replace(/\s*(علامة تعجب)(?=\s|$)/g,'!');
+  }
+  return t.replace(/\s*\b(new line|new paragraph)\b\s*/gi,'\n')
+          .replace(/\s*\b(period|full stop)\b/gi,'.')
+          .replace(/\s*\bcomma\b/gi,',')
+          .replace(/\s*\bquestion mark\b/gi,'?')
+          .replace(/\s*\bexclamation mark\b/gi,'!');
+}
+function addSpoken(t){
+  t = voiceCmds(t.trim()); if(!t) return;
+  const cur = srcText.value;
+  const sep = !cur || /[\n]$/.test(cur) || /^[.،,؟?!\n]/.test(t) ? '' : ' ';
+  srcText.value = cur + sep + t;
+  srcText.scrollTop = srcText.scrollHeight;
+  schedule();
+}
+function startRec(){
+  if(!SR){ toast('المتصفح لا يدعم التسجيل الصوتي — استخدم Chrome'); return; }
+  if(!navigator.onLine){ toast('التسجيل الصوتي يحتاج إنترنت'); return; }
+  rec = new SR();
+  rec.lang = mode === 'ar-en' ? 'ar-OM' : 'en-US';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = e => {
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const r = e.results[i];
+      if(r.isFinal) addSpoken(r[0].transcript);
+      else interim += r[0].transcript;
+    }
+    $('liveText').textContent = interim || 'أستمع إليك... تكلّم الآن';
+  };
+  rec.onerror = e => {
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){ toast('اسمح للبرنامج باستخدام الميكروفون من إعدادات المتصفح'); stopRec(); }
+    else if(e.error === 'network'){ toast('مشكلة في الإنترنت'); stopRec(); }
+  };
+  // أندرويد يوقف التسجيل بعد سكوت قصير — نعيد التشغيل تلقائياً ما دام الزر مفعّلاً
+  rec.onend = () => { if(recOn){ try{ rec.start(); }catch(err){ stopRec(); } } };
+  try{ rec.start(); }catch(err){ toast('تعذّر بدء التسجيل'); return; }
+  recOn = true;
+  $('btnMic').classList.add('rec'); $('btnMic').textContent = '⏹ إيقاف التسجيل';
+  $('liveBox').classList.add('on');
+  setStatus(mode==='ar-en' ? '🎙️ تكلّم بالعربي — قل "نقطة" أو "فاصلة" أو "سطر جديد" للترقيم' : '🎙️ Speak in English — say "period", "comma" or "new line"');
+}
+function stopRec(){
+  recOn = false;
+  try{ rec && rec.stop(); }catch(e){}
+  $('btnMic').classList.remove('rec'); $('btnMic').textContent = '🎙️ تسجيل صوتي';
+  $('liveBox').classList.remove('on'); $('liveText').textContent = 'أستمع إليك... تكلّم الآن';
+  if(srcText.value.trim()) translateAll();
+}
+$('btnMic').onclick = () => recOn ? stopRec() : startRec();
+// إيقاف التسجيل عند تبديل اتجاه الترجمة
+$('btnMode').addEventListener('click', () => { if(recOn) stopRec(); });
 
 /* ========== PWA: التثبيت والعمل بدون إنترنت ========== */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
