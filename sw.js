@@ -1,6 +1,6 @@
 // Service Worker — كاتب المقالات
 // غيّر رقم الإصدار عند تعديل أي ملف ليتحدّث التطبيق عند المستخدمين
-const CACHE = 'article-writer-v5';
+const CACHE = 'article-writer-v8';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
