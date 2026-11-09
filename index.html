@@ -88,6 +88,13 @@
   .vgrid{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;margin-top:12px}
   @media(max-width:850px){.vgrid{grid-template-columns:1fr}}
   .segs{max-height:420px;overflow:auto}
+  .carnow{background:#0f2f29;color:#fff;border-radius:14px;padding:22px 18px;margin:12px 0;text-align:center;min-height:170px}
+  .carnow .cs{font-size:24px;line-height:1.7;margin-bottom:10px}
+  .carnow .ct{font-size:22px;line-height:1.7;color:#f2c46b}
+  .carnow .cc{font-size:13px;opacity:.7;margin-top:10px}
+  .carctl{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+  .carctl button{font-size:30px;padding:10px 22px;border-radius:14px;min-width:80px}
+  .carctl button.main{background:var(--accent);color:#fff;border-color:var(--accent);min-width:120px}
   @media(max-width:600px){
     header{padding:10px 14px;gap:4px}
     header h1{font-size:17px;flex-basis:100%;white-space:nowrap}
@@ -124,6 +131,7 @@
     <button id="btnCam">📷 التقاط صورة</button>
     <button id="btnImg">🖼️ إرفاق صورة</button>
     <button id="btnVideoGo">🎬 ترجمة فيديو</button>
+    <button id="btnCarGo">🚗 وضع الاستماع</button>
     <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
     <input type="file" id="imgInput" accept="image/*" hidden>
     <button id="btnNew">📄 جديد</button>
@@ -191,6 +199,7 @@
 
   <div class="tabs">
     <button class="active" data-tab="learnBox">🎓 وضع التعلّم</button>
+    <button data-tab="carBox">🚗 الاستماع</button>
     <button data-tab="videoBox">🎬 ترجمة فيديو</button>
     <button data-tab="listBox">📚 مقالاتي</button>
   </div>
@@ -203,6 +212,47 @@
       <label class="switch"><input type="checkbox" id="hideTr"> أخفِ الترجمة (اختبر نفسك)</label>
     </div>
     <div class="card" id="learnTable"><div class="empty">اكتب مقالك ثم اضغط "جهّز الجمل".</div></div>
+  </div>
+
+  <!-- وضع الاستماع (السيارة) -->
+  <div id="carBox" style="display:none">
+    <div class="vbox">
+      <div class="hint">
+        يقرأ المقال جملةً جملة باللغتين بالتناوب، لتتعوّد أذنك على اللغة. يعمل والشاشة مطفأة، ويمكن التحكم به من أزرار السيارة/السماعة.
+        <br>• <b>حفظ الأصوات</b>: يحفظها في الجهاز لتعمل بدون إنترنت. • <b>ملف صوتي واحد</b>: ملف WAV تشغّله في السيارة أو أي مشغل.
+      </div>
+      <div class="toolbar">
+        <select id="carSrc"><option value="cur">المقال الحالي</option><option value="all">كل المقالات المحفوظة</option></select>
+        <select id="carOrder">
+          <option value="st">الأصل ثم الترجمة</option>
+          <option value="ts">الترجمة ثم الأصل</option>
+          <option value="stt">الأصل ثم الترجمة مرتين</option>
+          <option value="t">الترجمة فقط</option>
+          <option value="s">الأصل فقط</option>
+        </select>
+        <select id="carRep"><option value="1">كل جملة مرة</option><option value="2">كل جملة مرتين</option><option value="3">كل جملة 3 مرات</option></select>
+        <select id="carGap"><option value="1">فاصل 1 ث</option><option value="2" selected>فاصل 2 ث</option><option value="3">فاصل 3 ث</option><option value="5">فاصل 5 ث</option></select>
+        <label class="switch"><input type="checkbox" id="carLoop" checked> تكرار القائمة</label>
+      </div>
+      <div class="toolbar">
+        <button id="carPrep">⚙️ جهّز قائمة الاستماع</button>
+        <button id="carSaveAudio">⬇️ حفظ الأصوات (بدون إنترنت)</button>
+        <button class="gold" id="carExport">💾 تنزيل ملف صوتي واحد</button>
+      </div>
+      <div id="carStatus" class="count"></div>
+      <div class="bar" id="carBarWrap"><div id="carBar"></div></div>
+      <div class="carnow" id="carNow">
+        <div class="cs" id="carS">اضغط ▶️ للبدء</div>
+        <div class="ct" id="carT"></div>
+        <div class="cc" id="carC"></div>
+      </div>
+      <div class="carctl">
+        <button id="carPrev" title="السابق">⏮</button>
+        <button id="carPlay" class="main" title="تشغيل/إيقاف مؤقت">▶️</button>
+        <button id="carNext" title="التالي">⏭</button>
+        <button id="carStop" title="إيقاف">⏹</button>
+      </div>
+    </div>
   </div>
 
   <!-- ترجمة الفيديو -->
@@ -577,11 +627,12 @@ $('btnPrint').onclick = () => window.print();
 /* ========== التبويبات والتنبيهات ========== */
 function showTab(name){
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('active', x.dataset.tab===name));
-  ['learnBox','videoBox','listBox'].forEach(id => $(id).style.display = id===name ? '' : 'none');
+  ['learnBox','carBox','videoBox','listBox'].forEach(id => $(id).style.display = id===name ? '' : 'none');
   if(name==='listBox') renderList();
   if(name==='videoBox') renderVideoLib();
 }
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+$('btnCarGo').onclick = () => { showTab('carBox'); $('carBox').scrollIntoView({behavior:'smooth'}); };
 $('btnVideoGo').onclick = () => { showTab('videoBox'); $('videoBox').scrollIntoView({behavior:'smooth'}); };
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),2200); }
 
@@ -879,15 +930,19 @@ $('btnVidToArticle').onclick = () => {
 /* --- مكتبة الفيديو (IndexedDB داخل الجهاز) --- */
 function idb(){
   return new Promise((res, rej) => {
-    const r = indexedDB.open('article_writer_db', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('videos', {keyPath:'id'});
+    const r = indexedDB.open('article_writer_db', 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if(!db.objectStoreNames.contains('videos')) db.createObjectStore('videos', {keyPath:'id'});
+      if(!db.objectStoreNames.contains('clips'))  db.createObjectStore('clips',  {keyPath:'k'});
+    };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
 }
-async function dbDo(mode, fn){
+async function dbDo(mode, fn, store='videos'){
   const db = await idb();
   return new Promise((res, rej) => {
-    const tx = db.transaction('videos', mode), st = tx.objectStore('videos');
+    const tx = db.transaction(store, mode), st = tx.objectStore(store);
     const req = fn(st);
     tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
   });
@@ -925,6 +980,195 @@ async function renderVideoLib(){
     box.appendChild(d);
   });
 }
+
+/* ========== 🚗 وضع الاستماع ========== */
+const CAR = {items:[], i:0, playing:false, token:0, audio:null, cancel:null, corsBlocked:false};
+const sleep = ms => new Promise(r => { const t=setTimeout(r, ms); CAR.cancel = () => { clearTimeout(t); r(); }; });
+function carStatus(msg, pct){
+  $('carStatus').textContent = msg;
+  const w=$('carBarWrap');
+  if(pct===null){ w.classList.add('indet'); $('carBar').style.width=''; } else { w.classList.remove('indet'); $('carBar').style.width=(pct||0)+'%'; }
+}
+async function carPrepare(){
+  const arts = $('carSrc').value==='all' ? load().map(normalize) : [{from:S.from, to:S.to, srcTitle:srcTitle.value, srcText:srcText.value}];
+  const items = [];
+  carStatus('⏳ جاري تجهيز الجمل...', null);
+  for(const a of arts){
+    const sents = sentences(((a.srcTitle||'').trim() ? a.srcTitle+'\n' : '') + (a.srcText||''));
+    const trs = await Promise.all(sents.map(s => translate(s, a.from, a.to).catch(()=>'')));
+    sents.forEach((s,i) => items.push({s, t:trs[i], from:a.from, to:a.to, title:a.srcTitle||''}));
+  }
+  CAR.items = items; CAR.i = 0;
+  carStatus(items.length ? `✅ جاهز — ${items.length} جملة` : '⚠️ لا يوجد نص — اكتب مقالاً أو احفظ مقالات أولاً', items.length?100:0);
+  if(items.length) showCarItem();
+  return items.length;
+}
+function carSteps(it){
+  const S1={text:it.s, lang:it.from}, T1={text:it.t, lang:it.to};
+  const o=$('carOrder').value, base = o==='st'?[S1,T1] : o==='ts'?[T1,S1] : o==='stt'?[S1,T1,T1] : o==='t'?[T1] : [S1];
+  const out=[]; for(let r=0;r<parseInt($('carRep').value);r++) out.push(...base);
+  return out.filter(x => (x.text||'').trim());
+}
+function showCarItem(){
+  const it = CAR.items[CAR.i]; if(!it) return;
+  $('carS').textContent = it.s; $('carS').dir = L(it.from).dir;
+  $('carT').textContent = it.t; $('carT').dir = L(it.to).dir;
+  $('carC').textContent = `${CAR.i+1} / ${CAR.items.length}` + (it.title ? ' — ' + it.title : '');
+  if('mediaSession' in navigator){
+    try{
+      navigator.mediaSession.metadata = new MediaMetadata({title: it.t || it.s, artist: it.s, album: it.title || 'كاتب المقالات',
+        artwork:[{src:'icon-512.png', sizes:'512x512', type:'image/png'}]});
+    }catch(e){}
+  }
+}
+// --- مصادر الصوت: 1) محفوظ في الجهاز 2) تنزيل من Google 3) تشغيل مباشر من الإنترنت 4) محرك الجوال
+const ttsApi = (t,c) => `https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${gtCode(c)}&q=` + encodeURIComponent(t);
+const ttsWeb = (t,c) => `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${gtCode(c)}&q=` + encodeURIComponent(t);
+async function getClip(text, code, allowNet=true){
+  const k = code+'|'+text;
+  try{ const hit = await dbDo('readonly', st => st.get(k), 'clips'); if(hit && hit.blob) return hit.blob; }catch(e){}
+  if(!allowNet || CAR.corsBlocked || !navigator.onLine) return null;
+  try{
+    const r = await fetch(ttsApi(text, code));
+    if(!r.ok) return null;
+    const blob = await r.blob();
+    if(blob.size < 300) return null;
+    try{ await dbDo('readwrite', st => st.put({k, blob}), 'clips'); }catch(e){}
+    return blob;
+  }catch(e){ CAR.corsBlocked = true; return null; }
+}
+function playSrc(src){
+  if(!CAR.audio){ CAR.audio = new Audio(); }
+  const a = CAR.audio;
+  return new Promise((res, rej) => {
+    CAR.cancel = () => { a.pause(); res(); };
+    a.onended = () => res(); a.onerror = () => rej(new Error('audio'));
+    a.src = src; a.playbackRate = parseFloat($('rate').value) < 0.8 ? 0.8 : parseFloat($('rate').value);
+    a.play().catch(rej);
+  });
+}
+function deviceSay(text, code){
+  return new Promise(res => {
+    if(!('speechSynthesis' in window)) return res();
+    const u = new SpeechSynthesisUtterance(text); const v = pickVoice(code);
+    u.lang = L(code).sr; if(v){ u.voice=v; u.lang=v.lang.replace('_','-'); }
+    u.rate = parseFloat($('rate').value); u.onend = res; u.onerror = res;
+    CAR.cancel = () => { speechSynthesis.cancel(); res(); };
+    speechSynthesis.speak(u);
+  });
+}
+async function playClip(text, code, tok){
+  for(const part of splitBy(text, 180)){
+    if(tok !== CAR.token) return;
+    const blob = await getClip(part, code);
+    if(tok !== CAR.token) return;
+    try{
+      if(blob){ const u = URL.createObjectURL(blob); try{ await playSrc(u); } finally { URL.revokeObjectURL(u); } }
+      else if(navigator.onLine) await playSrc(ttsWeb(part, code));
+      else await deviceSay(part, code);
+    }catch(e){ if(tok === CAR.token) await deviceSay(part, code); }
+  }
+}
+async function carRun(){
+  if(!CAR.items.length && !(await carPrepare())) return;
+  const tok = ++CAR.token; CAR.playing = true; $('carPlay').textContent='⏸';
+  if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  while(tok === CAR.token){
+    if(CAR.i >= CAR.items.length){ if($('carLoop').checked) CAR.i = 0; else { carPause(); CAR.i = 0; break; } }
+    showCarItem();
+    const steps = carSteps(CAR.items[CAR.i]);
+    for(let k=0;k<steps.length;k++){
+      await playClip(steps[k].text, steps[k].lang, tok);
+      if(tok !== CAR.token) return;
+      if(k < steps.length-1) await sleep(700);
+      if(tok !== CAR.token) return;
+    }
+    await sleep(parseFloat($('carGap').value)*1000);
+    if(tok !== CAR.token) return;
+    CAR.i++;
+  }
+}
+function carHalt(){ CAR.token++; const c=CAR.cancel; CAR.cancel=null; c && c(); try{ speechSynthesis.cancel(); }catch(e){} }
+function carPause(){ carHalt(); CAR.playing=false; $('carPlay').textContent='▶️'; if('mediaSession' in navigator) navigator.mediaSession.playbackState='paused'; }
+function carJump(d){ const was=CAR.playing; carHalt(); CAR.i = Math.max(0, Math.min(CAR.items.length-1, CAR.i+d)); showCarItem(); if(was) carRun(); }
+$('carPlay').onclick = () => CAR.playing ? carPause() : carRun();
+$('carNext').onclick = () => carJump(1);
+$('carPrev').onclick = () => carJump(-1);
+$('carStop').onclick = () => { carPause(); CAR.i=0; showCarItem(); };
+$('carPrep').onclick = () => { carPause(); carPrepare(); };
+['carSrc'].forEach(id => $(id).onchange = () => { carPause(); CAR.items=[]; $('carS').textContent='اضغط ▶️ للبدء'; $('carT').textContent=''; $('carC').textContent=''; });
+if('mediaSession' in navigator){
+  try{
+    navigator.mediaSession.setActionHandler('play', () => carRun());
+    navigator.mediaSession.setActionHandler('pause', () => carPause());
+    navigator.mediaSession.setActionHandler('nexttrack', () => carJump(1));
+    navigator.mediaSession.setActionHandler('previoustrack', () => carJump(-1));
+  }catch(e){}
+}
+// حفظ كل الأصوات في الجهاز
+async function carSaveAll(){
+  if(!navigator.onLine){ carStatus('📴 حفظ الأصوات يحتاج إنترنت (مرة واحدة)', 0); return false; }
+  if(!CAR.items.length && !(await carPrepare())) return false;
+  const jobs = [];
+  CAR.items.forEach(it => [[it.s,it.from],[it.t,it.to]].forEach(([t,c]) => { if((t||'').trim()) splitBy(t,180).forEach(p => jobs.push([p,c])); }));
+  let ok = 0;
+  for(let i=0;i<jobs.length;i++){
+    const b = await getClip(jobs[i][0], jobs[i][1]);
+    if(CAR.corsBlocked){ carStatus('⚠️ جهازك لا يسمح بحفظ الأصوات — الاستماع يعمل مع الإنترنت فقط. (جرّب Chrome)', 0); return false; }
+    if(b) ok++;
+    carStatus(`⬇️ جاري حفظ الأصوات... ${i+1}/${jobs.length}`, (i+1)/jobs.length*100);
+    await new Promise(r=>setTimeout(r,120));
+  }
+  carStatus(ok===jobs.length ? `✅ تم حفظ ${ok} مقطع صوتي — الاستماع يعمل الآن بدون إنترنت` : `⚠️ حُفظ ${ok} من ${jobs.length} — أعد المحاولة لإكمال الباقي`, 100);
+  return ok===jobs.length;
+}
+$('carSaveAudio').onclick = carSaveAll;
+// تصدير ملف صوتي واحد WAV (يشمل الترتيب والتكرار والفواصل المختارة)
+async function carExport(){
+  carPause();
+  if(!CAR.items.length && !(await carPrepare())) return;
+  const SRo = 22050, chunks = [];
+  const silence = sec => new Float32Array(Math.round(SRo*sec));
+  const AC = window.AudioContext || window.webkitAudioContext; const ctx = new AC();
+  try{
+    let n=0; const total = CAR.items.length;
+    for(const it of CAR.items){
+      const steps = carSteps(it);
+      for(let k=0;k<steps.length;k++){
+        for(const part of splitBy(steps[k].text, 180)){
+          const blob = await getClip(part, steps[k].lang);
+          if(!blob){ carStatus(CAR.corsBlocked ? '⚠️ جهازك لا يسمح بإنشاء الملف الصوتي — استخدم وضع الاستماع داخل التطبيق.' : '⚠️ تعذّر تنزيل بعض الأصوات — تأكد من الإنترنت وحاول مرة أخرى.', 0); return; }
+          const ab = await ctx.decodeAudioData(await blob.arrayBuffer());
+          chunks.push(resample(ab, SRo));
+        }
+        if(k < steps.length-1) chunks.push(silence(0.7));
+      }
+      chunks.push(silence(parseFloat($('carGap').value)));
+      n++; carStatus(`🎚️ جاري إنشاء الملف الصوتي... ${n}/${total}`, n/total*100);
+    }
+    const wav = encodeWAV(chunks, SRo);
+    const name = (safeName($('carSrc').value==='all' ? 'مقالاتي' : (srcTitle.value||'مقال')) || 'audio') + '_' + ($('carSrc').value==='all'?'all':S.from+'-'+S.to) + '.wav';
+    download(name, wav);
+    carStatus(`✅ تم إنشاء الملف (${(wav.size/1048576).toFixed(1)} ميجا) — ستجده في التنزيلات`, 100);
+  }catch(e){ console.error(e); carStatus('⚠️ تعذّر إنشاء الملف الصوتي', 0); }
+  finally{ try{ ctx.close(); }catch(e){} }
+}
+function resample(ab, outRate){
+  const ch = ab.numberOfChannels, len = ab.length, inp = new Float32Array(len);
+  for(let c=0;c<ch;c++){ const d=ab.getChannelData(c); for(let i=0;i<len;i++) inp[i]+=d[i]/ch; }
+  const ratio = ab.sampleRate/outRate, n = Math.floor(len/ratio), out = new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=i*ratio, i0=Math.floor(x), f=x-i0; out[i] = inp[i0]*(1-f) + (inp[i0+1]||0)*f; }
+  return out;
+}
+function encodeWAV(chunks, rate){
+  const total = chunks.reduce((a,c)=>a+c.length,0), buf = new ArrayBuffer(44 + total*2), v = new DataView(buf);
+  const w = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+total*2,true); w(8,'WAVE'); w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); w(36,'data'); v.setUint32(40,total*2,true);
+  let o=44; for(const c of chunks){ for(let i=0;i<c.length;i++,o+=2){ const s=Math.max(-1,Math.min(1,c[i])); v.setInt16(o, s<0?s*0x8000:s*0x7FFF, true); } }
+  return new Blob([buf], {type:'audio/wav'});
+}
+$('carExport').onclick = carExport;
 
 /* ========== PWA ========== */
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
